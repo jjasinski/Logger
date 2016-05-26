@@ -133,11 +133,12 @@ void main()
   auto begin = DefaultClock::now();
   const auto MILLION = 1000000;
   const auto THOUSAND = 1000;
-  for (int i = 0; i < MILLION; ++i)
+  for (int i = 0; i < THOUSAND; ++i)
   {
     logger.debug(LOGGER_CALL_CONTEXT, "message...");
     /*logger.debug(LOGGER_CALL_CONTEXT, "message A: " + std::to_string(i) + "/" + std::to_string(MILLION));*/
-    //logger.critical(LOGGER_CALL_CONTEXT, "Critical error");
+    logger.critical(LOGGER_CALL_CONTEXT, "Error");
+    logger.critical(LOGGER_CALL_CONTEXT, "Critical error");
   }
   doBreak = true;
   auto end = DefaultClock::now();

@@ -53,8 +53,7 @@ typedef std::chrono::high_resolution_clock DefaultClock;
 
 enum class Level 
 {
-  NONE = 0,
-  TRACE,
+  TRACE = 0,
   DEBUG_FINEST,
   DEBUG_FINER,
   DEBUG_FINE,
@@ -62,7 +61,8 @@ enum class Level
   INFO,
   WARNING,
   ERROR,
-  CRITICAL
+  CRITICAL,
+  NEVER
 };
 
 struct Message

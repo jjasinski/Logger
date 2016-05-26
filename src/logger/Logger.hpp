@@ -11,8 +11,8 @@ namespace logger
     explicit Logger(const std::string& aName)
       :
       loggerContext(std::make_shared< LoggerContext >(aName)),
-      filteringLevel(Level::NONE),
-      autoFlushLevel(Level::CRITICAL),
+      filteringLevel(Level::NEVER),
+      autoFlushLevel(Level::NEVER),
       sink(std::make_shared< NullSink >())
     {
     }
@@ -28,7 +28,7 @@ namespace logger
 
     void error(const CallContext& aContext, std::string&& aMsg)
     {
-      return log(aContext, Level::CRITICAL, std::move(aMsg));
+      return log(aContext, Level::ERROR, std::move(aMsg));
     }
 
     void debug(const CallContext& aContext, std::string&& aMsg)
