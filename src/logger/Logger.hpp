@@ -12,7 +12,7 @@ namespace logger
       :
       loggerContext(std::make_shared< LoggerContext >(aName)),
       filteringLevel(Level::NONE),
-      autoFlushLevel(Level::NONE),
+      autoFlushLevel(Level::CRITICAL),
       sink(std::make_shared< NullSink >())
     {
     }
@@ -20,6 +20,16 @@ namespace logger
     Level filteringLevel;
     Level autoFlushLevel;
     std::shared_ptr< Sink > sink;
+
+    void critical(const CallContext& aContext, std::string&& aMsg)
+    {
+      return log(aContext, Level::CRITICAL, std::move(aMsg));
+    }
+
+    void error(const CallContext& aContext, std::string&& aMsg)
+    {
+      return log(aContext, Level::CRITICAL, std::move(aMsg));
+    }
 
     void debug(const CallContext& aContext, std::string&& aMsg)
     {
@@ -38,8 +48,10 @@ namespace logger
     {
       if (aLevel >= filteringLevel)
       {
-        auto message = makeMessage(aContext, aLevel);
-        message->raw = std::move(aMsg);
+        auto message = makeMessage(aContext);
+        message->level = aLevel;
+        message->content = std::move(aMsg);
+
         sink->send(std::move(message));
         if (aLevel >= autoFlushLevel)
         {
@@ -48,11 +60,9 @@ namespace logger
       }
     }
 
-    std::unique_ptr< Message > makeMessage(const CallContext& aContext, Level aLevel)
+    std::unique_ptr< Message > makeMessage(const CallContext& aContext)
     {
-      auto message = std::make_unique< Message >(aContext, loggerContext);
-      message->level = aLevel;
-      return std::move(message);
+      return std::make_unique< Message >(aContext, loggerContext);
     }
   };
 

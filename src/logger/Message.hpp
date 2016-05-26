@@ -53,7 +53,16 @@ typedef std::chrono::high_resolution_clock DefaultClock;
 
 enum class Level 
 {
-  CRITICAL, ERROR, WARNING, INFO, DEBUG, DEBUG_FINE, DEBUG_FINER, DEBUG_FINEST, TRACE, NONE
+  NONE = 0,
+  TRACE,
+  DEBUG_FINEST,
+  DEBUG_FINER,
+  DEBUG_FINE,
+  DEBUG,
+  INFO,
+  WARNING,
+  ERROR,
+  CRITICAL
 };
 
 struct Message
@@ -72,7 +81,7 @@ struct Message
   std::shared_ptr<const LoggerContext> loggerContext;
 
   Level level;
-  std::string raw;
+  std::string content;
     
   // additional information
   std::chrono::time_point< DefaultClock > time;

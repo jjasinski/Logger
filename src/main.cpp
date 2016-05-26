@@ -46,11 +46,11 @@ public:
     auto ms = duration.count() / 1000;// / (10 >> 3);
     if (message->level >= Level::WARNING)
     {
-      std::cerr << ms << ": " << message->raw << std::endl;
+      std::cerr << ms << ": " << message->content << std::endl;
     }
     else
     {
-      std::cout << ms  << ": " << message->raw << std::endl;
+      std::cout << ms  << ": " << message->content << std::endl;
     }
   }
 
@@ -62,10 +62,10 @@ public:
   //std::atomic_bool 
 };
 
-class LockFreeSink : public Sink
+class MultithreadSink : public Sink
 {
 public:
-  explicit LockFreeSink(std::shared_ptr< Sink > aSink)
+  explicit MultithreadSink(std::shared_ptr< Sink > aSink)
     :
     internalSink(aSink)
   {
@@ -110,7 +110,7 @@ void main()
   auto sink = std::make_shared< StandardOutputSink >();
  
   Logger logger("");
-  logger.sink = std::make_shared< LockFreeSink >(sink);
+  logger.sink = std::make_shared< MultithreadSink >(sink);
   //logger.sink = sink;
 
   std::thread thread(
@@ -131,9 +131,13 @@ void main()
 
   logger.filteringLevel = Level::DEBUG;
   auto begin = DefaultClock::now();
-  for (int i = 0; i < 100/*0000*/; ++i)
+  const auto MILLION = 1000000;
+  const auto THOUSAND = 1000;
+  for (int i = 0; i < MILLION; ++i)
   {
-    logger.debug(LOGGER_CALL_CONTEXT, "message A: "/* + std::to_string(i)*/);
+    logger.debug(LOGGER_CALL_CONTEXT, "message...");
+    /*logger.debug(LOGGER_CALL_CONTEXT, "message A: " + std::to_string(i) + "/" + std::to_string(MILLION));*/
+    //logger.critical(LOGGER_CALL_CONTEXT, "Critical error");
   }
   doBreak = true;
   auto end = DefaultClock::now();
