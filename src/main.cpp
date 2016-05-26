@@ -40,7 +40,7 @@ public:
   }
 
   // Inherited via Sink
-  virtual void log(std::unique_ptr<Message> message) override
+  virtual void send(std::unique_ptr<Message> message) override
   {
     auto duration = message->time - begin;
     auto ms = duration.count() / 1000;// / (10 >> 3);
@@ -72,7 +72,7 @@ public:
     messages.reserve(10000);//10K
   }
 
-  virtual void log(std::unique_ptr<Message> message) override
+  virtual void send(std::unique_ptr<Message> message) override
   {
     std::lock_guard< std::mutex > lock(mt);
     messages.push_back(std::move(message));
@@ -87,7 +87,7 @@ public:
    // consume queue by target Sink
    for (auto it = localMessages.begin(); it != localMessages.end(); ++it)
     {
-      internalSink->log(std::move(*it));
+      internalSink->send(std::move(*it));
     }
     
     internalSink->flush();
@@ -131,7 +131,7 @@ void main()
 
   logger.filteringLevel = Level::DEBUG;
   auto begin = DefaultClock::now();
-  for (int i = 0; i < 1000000; ++i)
+  for (int i = 0; i < 100/*0000*/; ++i)
   {
     logger.debug(LOGGER_CALL_CONTEXT, "message A: "/* + std::to_string(i)*/);
   }

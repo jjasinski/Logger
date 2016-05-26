@@ -40,7 +40,7 @@ namespace logger
       {
         auto message = makeMessage(aContext, aLevel);
         message->raw = std::move(aMsg);
-        sink->log(std::move(message));
+        sink->send(std::move(message));
         if (aLevel >= autoFlushLevel)
         {
           sink->flush();

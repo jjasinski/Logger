@@ -11,7 +11,7 @@ namespace logger
     Sink() = default;
     virtual ~Sink() = default;
 
-    virtual void log(std::unique_ptr< Message > message) = 0;
+    virtual void send(std::unique_ptr< Message > message) = 0;
     virtual void flush() = 0;
   };
 
@@ -21,7 +21,7 @@ namespace logger
     NullSink() = default;
     virtual ~NullSink() = default;
 
-    virtual void log(std::unique_ptr< Message > message)
+    virtual void send(std::unique_ptr< Message > message)
     {
       // empty implementation
     }
