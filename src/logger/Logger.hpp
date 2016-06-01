@@ -17,8 +17,8 @@ namespace logger
     {
     }
 
-    Level filteringLevel;
-    Level autoFlushLevel;
+    std::atomic< Level > filteringLevel;
+    std::atomic< Level > autoFlushLevel;
     std::shared_ptr< Sink > sink;
 
     void critical(const CallContext& aContext, std::string&& aMsg)
@@ -39,6 +39,11 @@ namespace logger
     void flush()
     {
       sink->flush();
+    }
+
+    const std::string& getName() const
+    {
+      return loggerContext->name;
     }
 
   private:
