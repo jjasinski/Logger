@@ -10,7 +10,10 @@
 
 #include <ctime>
 #include <thread>
+#include <assert.h>
 #include <shared_mutex>
+#include <map>
+#include <unordered_map>
 
 #include "logger/Message.hpp"
 #include "logger/Sink.hpp"
@@ -105,12 +108,133 @@ class Lock
 };
 std::atomic_bool doBreak = false;
 
+/*
+// register general logger mechanism (multithreading or not)
+logger::registry().registerHandle(...);
+
+logger::registry()->get()->debug(...);
+logger::registry()->get("name")->debug(...);
+auto logger = logger::registry()->get();
+logger->debug(...);
+logger->info(...).flush();
+
+// release all logger resources
+logger::registry().releaseHandle();
+*/
+
+namespace logger
+{
+
+  typedef std::shared_ptr< Logger > LoggerPtr;
+
+  class RegistryHandle
+  {
+  public:
+    virtual ~RegistryHandle() = default;
+
+    virtual LoggerPtr getLogger(const std::string& name) = 0;
+    virtual LoggerPtr unregisterLogger(const std::string& name) = 0;
+    virtual void registerLogger(LoggerPtr logger) = 0;
+  };
+
+  class Registry
+  {
+  public:
+    
+    void registerHandle(std::unique_ptr< RegistryHandle > aHandle)
+    {
+      handle = std::move(aHandle);
+    }
+
+    std::unique_ptr< RegistryHandle > unregisterHandle()
+    {
+      return std::move(handle);
+    }
+
+    RegistryHandle* operator->()
+    {
+      assert(handle); // TODO exception may be better
+      return handle.get();
+    }
+
+  private:
+    std::unique_ptr< RegistryHandle > handle;
+  };
+
+
+
+  class MultithreadRegistryHandle: public RegistryHandle
+  {
+  public:
+    MultithreadRegistryHandle()
+    {
+
+    }
+    virtual ~MultithreadRegistryHandle() = default;
+
+    virtual LoggerPtr getLogger(const std::string& name)
+    {
+      std::shared_lock< std::shared_timed_mutex > rhs(mutex, std::defer_lock);
+
+      //if (!loggers.count(name))
+      //{
+      //  throw std::runtime_error("Logger not found");
+      //}
+      //return loggers[name];
+
+      auto findIt = loggers.find(name);
+      if (findIt == loggers.end())
+      {
+        throw std::runtime_error("Logger not found");
+      }
+      return findIt->second;
+    }
+    virtual LoggerPtr unregisterLogger(const std::string& name)
+    {
+      std::unique_lock< std::shared_timed_mutex > rhs(mutex, std::defer_lock);
+
+      LoggerPtr result;
+
+      if (loggers.count(name))
+      {
+        result = loggers[name];
+        loggers.erase(name);
+      }
+     
+      return result;
+    }
+
+    virtual void registerLogger(LoggerPtr logger)
+    {
+      assert(logger);
+      std::unique_lock< std::shared_timed_mutex > rhs(mutex, std::defer_lock);
+      const auto& name = logger->getName();
+      if ( loggers.count(name) )
+      {
+        throw std::runtime_error("Logger already register");
+      }
+      loggers[name ] = logger;
+    }
+  private:
+    std::shared_timed_mutex mutex;
+    std::map< std::string, LoggerPtr > loggers;
+    //std::unordered_map< std::string, LoggerPtr > loggers;
+  };
+
+} // logger
+
 void main()
 {
+  Registry registry;
+  
+  registry.registerHandle( std::make_unique< MultithreadRegistryHandle >() );
+
   auto sink = std::make_shared< StandardOutputSink >();
  
-  Logger logger("");
-  logger.sink = std::make_shared< MultithreadSink >(sink);
+  //Logger logger("");
+  auto logger = std::make_shared< Logger >("");
+  registry->registerLogger(logger);
+  logger->sink = std::make_shared< MultithreadSink >(sink);
   //logger.sink = sink;
 
   std::thread thread(
@@ -118,7 +242,7 @@ void main()
   {
     while (!doBreak)
     {
-      logger.flush();
+      logger->flush();
       std::this_thread::yield();
     }
     
@@ -127,18 +251,21 @@ void main()
 
   //thread.
 
-  logger.debug(LOGGER_CALL_CONTEXT, "message 1");
-
-  logger.filteringLevel = Level::DEBUG;
+  logger->debug(LOGGER_CALL_CONTEXT, "message 1");
+  const std::string DEFAULT_LOGGER_NAME = "";
+  logger->filteringLevel = Level::DEBUG;
   auto begin = DefaultClock::now();
   const auto MILLION = 1000000;
   const auto THOUSAND = 1000;
+
   for (int i = 0; i < THOUSAND; ++i)
   {
-    logger.debug(LOGGER_CALL_CONTEXT, "message...");
+    //logger->debug(LOGGER_CALL_CONTEXT, "message...");
+    registry->getLogger(DEFAULT_LOGGER_NAME)->debug(LOGGER_CALL_CONTEXT, "message...");
+    
     /*logger.debug(LOGGER_CALL_CONTEXT, "message A: " + std::to_string(i) + "/" + std::to_string(MILLION));*/
-    logger.critical(LOGGER_CALL_CONTEXT, "Error");
-    logger.critical(LOGGER_CALL_CONTEXT, "Critical error");
+    //logger.critical(LOGGER_CALL_CONTEXT, "Error");
+    //logger.critical(LOGGER_CALL_CONTEXT, "Critical error");
   }
   doBreak = true;
   auto end = DefaultClock::now();
@@ -151,4 +278,6 @@ void main()
   //logger.debug(LOGGER_CALL_CONTEXT, "message 4");
 
   //logger.flush();
+
+  registry.unregisterHandle();
 }
