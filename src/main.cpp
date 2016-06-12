@@ -11,13 +11,13 @@
 #include <ctime>
 #include <thread>
 #include <assert.h>
-#include <shared_mutex>
-#include <map>
-#include <unordered_map>
 
 #include "logger/Message.hpp"
 #include "logger/Sink.hpp"
 #include "logger/Logger.hpp"
+#include "logger/Registry.hpp"
+
+#include "logger/impl/MultithreadRegistry.hpp"
 
 // TODO
 // add posibility of flushing from the same line like:
@@ -25,17 +25,17 @@
 
 using namespace logger;
 
-class Formatter // assigned to sink! (optional)
-{
-public:
-  virtual ~Formatter() = 0;
-  virtual std::string format(const Message& message) const = 0;
-};
+//class Formatter // assigned to sink! (optional)
+//{
+//public:
+//  virtual ~Formatter() = 0;
+//  virtual std::string format(const Message& message) const = 0;
+//};
 
-class StandardOutputSink: public Sink
+class SimpleStandardOutputSink: public Sink
 {
 public:
-  StandardOutputSink()
+  SimpleStandardOutputSink()
     :
     begin(DefaultClock::now())
   {
@@ -65,6 +65,141 @@ public:
   //std::atomic_bool 
 };
 
+//class SinkFactory
+//{
+//public:
+//  SinkFactory() = default;
+//  virtual ~SinkFactory() = default;
+//
+//  typedef std::shared_ptr< Sink > SinkPtr;
+//
+//  virtual SinkPtr createStandardOutputSink() = 0;
+//};
+
+// TODO add NullFlag with empty functions?
+
+struct AtomicFlag
+{
+  AtomicFlag(bool flag)
+    :
+    value(flag)
+  {
+  }
+
+  bool operator=(bool flag)
+  {
+    return value = flag;
+  }
+
+  operator bool() const
+  {
+    return value;
+  }
+
+  bool exchange(bool flag)
+  {
+    return value.exchange(flag);
+  }
+
+  std::atomic_bool value;
+};
+
+struct NotAtomicFlag
+{
+  NotAtomicFlag(bool flag)
+    :
+    value(flag)
+  {
+  }
+
+  bool operator=(bool flag)
+  {
+    return value = flag;
+  }
+
+  operator bool() const
+  {
+    return value;
+  }
+
+  bool exchange(bool flag)
+  {
+    bool res = value;
+    value = flag;
+    return res;
+  }
+
+  bool value;
+};
+
+
+typedef std::function < std::string(const Message&) > Formatter;
+template</*typename Formatter, */typename BinaryFlag>
+class StandardOutputSink : public Sink
+{
+public:
+  explicit StandardOutputSink(Formatter _formatter)
+    :
+    formatter(_formatter),
+    errNeedsFlush(false),
+    outNeedsFlush(false)
+  {
+
+  }
+
+  virtual void send(std::unique_ptr<Message> message) override
+  {
+    if (message->level >= Level::WARNING)
+    {
+      std::cerr << formatter(*message) << std::endl;
+      errNeedsFlush = true;
+    }
+    else
+    {
+      std::cout << formatter(*message) << std::endl;
+      outNeedsFlush = true;
+    }
+  }
+  
+  virtual void flush() override
+  {
+    if (errNeedsFlush.exchange(false))
+    {
+      std::cerr.flush();
+    }
+    if (outNeedsFlush.exchange(false))
+    {
+      std::cout.flush();
+    }
+  }
+private:
+  Formatter formatter;
+  BinaryFlag errNeedsFlush;
+  BinaryFlag outNeedsFlush;
+};
+
+class StandardFormatter
+{
+public:
+  std::string operator()(const Message& message) const
+  {
+    return message.content;
+  }
+};
+
+class SinkFactory
+{
+public:
+  typedef std::shared_ptr< Sink > SinkPtr;
+
+  SinkFactory() = default;
+  virtual ~SinkFactory() = default;
+
+  virtual SinkPtr createStandardOutputSink(Formatter formatter) = 0;
+};
+
+typedef std::shared_ptr< Sink > SinkPtr;
+
 class MultithreadSink : public Sink
 {
 public:
@@ -87,6 +222,10 @@ public:
     auto localMessages = std::move(messages);
     mt.unlock();
 
+    if (localMessages.empty())
+    {
+      return;
+    }
    // consume queue by target Sink
    for (auto it = localMessages.begin(); it != localMessages.end(); ++it)
     {
@@ -102,11 +241,23 @@ private:
   std::vector< std::unique_ptr<Message> > messages;
 };
 
-class Lock
+class MultthreadSinkFactory : public SinkFactory
 {
+public:
+  typedef std::shared_ptr< Sink > SinkPtr;
 
+  virtual SinkPtr createStandardOutputSink(Formatter formatter)
+  {
+    auto internalSink = std::make_shared< StandardOutputSink< AtomicFlag > >(formatter);
+    return makeMultithreadSink(internalSink);
+  }
+
+private:
+  SinkPtr makeMultithreadSink(SinkPtr internalSink)
+  {
+    return std::make_shared< MultithreadSink >(internalSink);
+  }
 };
-std::atomic_bool doBreak = false;
 
 /*
 // register general logger mechanism (multithreading or not)
@@ -125,159 +276,62 @@ logger::registry().releaseHandle();
 namespace logger
 {
 
-  typedef std::shared_ptr< Logger > LoggerPtr;
-
-  class RegistryHandle
-  {
-  public:
-    virtual ~RegistryHandle() = default;
-
-    virtual LoggerPtr getLogger(const std::string& name) = 0;
-    virtual LoggerPtr unregisterLogger(const std::string& name) = 0;
-    virtual void registerLogger(LoggerPtr logger) = 0;
-  };
-
-  class Registry
-  {
-  public:
-    
-    void registerHandle(std::unique_ptr< RegistryHandle > aHandle)
-    {
-      handle = std::move(aHandle);
-    }
-
-    std::unique_ptr< RegistryHandle > unregisterHandle()
-    {
-      return std::move(handle);
-    }
-
-    RegistryHandle* operator->()
-    {
-      assert(handle); // TODO exception may be better
-      return handle.get();
-    }
-
-  private:
-    std::unique_ptr< RegistryHandle > handle;
-  };
-
-
-
-  class MultithreadRegistryHandle: public RegistryHandle
-  {
-  public:
-    MultithreadRegistryHandle()
-    {
-
-    }
-    virtual ~MultithreadRegistryHandle() = default;
-
-    virtual LoggerPtr getLogger(const std::string& name)
-    {
-      std::shared_lock< std::shared_timed_mutex > rhs(mutex, std::defer_lock);
-
-      //if (!loggers.count(name))
-      //{
-      //  throw std::runtime_error("Logger not found");
-      //}
-      //return loggers[name];
-
-      auto findIt = loggers.find(name);
-      if (findIt == loggers.end())
-      {
-        throw std::runtime_error("Logger not found");
-      }
-      return findIt->second;
-    }
-    virtual LoggerPtr unregisterLogger(const std::string& name)
-    {
-      std::unique_lock< std::shared_timed_mutex > rhs(mutex, std::defer_lock);
-
-      LoggerPtr result;
-
-      if (loggers.count(name))
-      {
-        result = loggers[name];
-        loggers.erase(name);
-      }
-     
-      return result;
-    }
-
-    virtual void registerLogger(LoggerPtr logger)
-    {
-      assert(logger);
-      std::unique_lock< std::shared_timed_mutex > rhs(mutex, std::defer_lock);
-      const auto& name = logger->getName();
-      if ( loggers.count(name) )
-      {
-        throw std::runtime_error("Logger already register");
-      }
-      loggers[name ] = logger;
-    }
-  private:
-    std::shared_timed_mutex mutex;
-    std::map< std::string, LoggerPtr > loggers;
-    //std::unordered_map< std::string, LoggerPtr > loggers;
-  };
-
 } // logger
 
 void main()
 {
-  Registry registry;
+  auto factory = std::make_unique< MultthreadSinkFactory >();
   
-  registry.registerHandle( std::make_unique< MultithreadRegistryHandle >() );
+  registry().registerHandle( std::make_unique< MultithreadRegistryHandle >() );
 
-  auto sink = std::make_shared< StandardOutputSink >();
- 
-  //Logger logger("");
-  auto logger = std::make_shared< Logger >("");
-  registry->registerLogger(logger);
-  logger->sink = std::make_shared< MultithreadSink >(sink);
-  //logger.sink = sink;
 
-  std::thread thread(
-    [&logger]()
+  auto sink = factory->createStandardOutputSink(
+    [] (const Message& message)
   {
-    while (!doBreak)
-    {
-      logger->flush();
-      std::this_thread::yield();
-    }
-    
+    return "[" + message.loggerContext->name + "] " + message.content;
   }
   );
+ 
+  const std::string DEFAULT_LOGGER_NAME = "module name";
 
-  //thread.
+  auto logger = std::make_shared< Logger >(DEFAULT_LOGGER_NAME);
+  //logger->sink = sink;
+  
+  registry()->registerLogger(logger);
 
   logger->debug(LOGGER_CALL_CONTEXT, "message 1");
-  const std::string DEFAULT_LOGGER_NAME = "";
+  
   logger->filteringLevel = Level::DEBUG;
   auto begin = DefaultClock::now();
-  const auto MILLION = 1000000;
   const auto THOUSAND = 1000;
+  const auto MILLION = THOUSAND * THOUSAND;
+  //logger->filteringLevel = Level::NEVER;
 
-  for (int i = 0; i < THOUSAND; ++i)
+  for (int i = 0; i < MILLION; ++i)
   {
+    //logger->debug(LOGGER_CALL_CONTEXT, "");
     //logger->debug(LOGGER_CALL_CONTEXT, "message...");
-    registry->getLogger(DEFAULT_LOGGER_NAME)->debug(LOGGER_CALL_CONTEXT, "message...");
+    //logger->debug(LOGGER_CALL_CONTEXT, "message..." + std::to_string(i));
+    
+    registry()->getLogger(DEFAULT_LOGGER_NAME)->debug(LOGGER_CALL_CONTEXT, "message...");
+    //registry()->getLogger(DEFAULT_LOGGER_NAME)->debug(LOGGER_CALL_CONTEXT, "message..." + std::to_string(i));
     
     /*logger.debug(LOGGER_CALL_CONTEXT, "message A: " + std::to_string(i) + "/" + std::to_string(MILLION));*/
     //logger.critical(LOGGER_CALL_CONTEXT, "Error");
     //logger.critical(LOGGER_CALL_CONTEXT, "Critical error");
   }
-  doBreak = true;
+  //doBreak = true;
   auto end = DefaultClock::now();
-  thread.join();
 
   auto duration = end - begin;
   std::cout << "total time: " << duration.count() * 1. / 1000000000. << "sec" << std::endl;
+
+  //logger->flush();
   //logger.debug(LOGGER_CALL_CONTEXT, "message 2");
   //logger.debug(LOGGER_CALL_CONTEXT, "message 3");
   //logger.debug(LOGGER_CALL_CONTEXT, "message 4");
 
   //logger.flush();
 
-  registry.unregisterHandle();
+  registry().unregisterHandle();
 }
