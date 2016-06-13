@@ -11,6 +11,7 @@
 #include <ctime>
 #include <thread>
 #include <assert.h>
+#include <fstream>
 
 #include "logger/Message.hpp"
 #include "logger/Sink.hpp"
@@ -134,7 +135,8 @@ struct NotAtomicFlag
 
 
 typedef std::function < std::string(const Message&) > Formatter;
-template</*typename Formatter, */typename BinaryFlag>
+
+template<typename BinaryFlag>
 class StandardOutputSink : public Sink
 {
 public:
@@ -156,7 +158,7 @@ public:
     }
     else
     {
-      std::cout << formatter(*message) << std::endl;
+      std::cout << formatter(*message);// << std::endl;
       outNeedsFlush = true;
     }
   }
@@ -178,6 +180,33 @@ private:
   BinaryFlag outNeedsFlush;
 };
 
+class FileSink : public Sink
+{
+public:
+  explicit FileSink(const std::string& name, Formatter _formatter)
+    :
+    formatter(_formatter)
+  {
+    file.open(name, std::ofstream::out/* | std::ofstream::app*/);
+  }
+
+  virtual void send(std::unique_ptr<Message> message) override
+  {
+    auto msg = formatter(*message);
+    file.write(msg.c_str(), msg.size());
+    //file << msg;
+    //file << formatter(*message);// << std::endl;
+  }
+
+  virtual void flush() override
+  {
+    file.flush();
+  }
+private:
+  std::ofstream file;
+  Formatter formatter;
+};
+
 class StandardFormatter
 {
 public:
@@ -196,6 +225,8 @@ public:
   virtual ~SinkFactory() = default;
 
   virtual SinkPtr createStandardOutputSink(Formatter formatter) = 0;
+
+  virtual SinkPtr createFileSink(const std::string& name, Formatter formatter) = 0;
 };
 
 typedef std::shared_ptr< Sink > SinkPtr;
@@ -252,6 +283,12 @@ public:
     return makeMultithreadSink(internalSink);
   }
 
+  virtual SinkPtr createFileSink(const std::string& name, Formatter formatter)
+  {
+    auto internalSink = std::make_shared< FileSink >(name, formatter);
+    return makeMultithreadSink(internalSink);
+  }
+
 private:
   SinkPtr makeMultithreadSink(SinkPtr internalSink)
   {
@@ -281,9 +318,10 @@ namespace logger
   {
     std::string result;
 
-    size_t size = snprintf(nullptr, 0, format.c_str(), args ...);
+    size_t size = snprintf(nullptr, 0, format.c_str(), args ...) + 1; // extra place for '\0'
     result.resize(size);
-    snprintf(&result[0], size, format.c_str(), args ...);
+    snprintf(&result[0], size, format.c_str(), args ...); // generate string with '\0' at the end
+    result.resize(size - 1); // cut the last '\0' character
     return std::move(result);
   }
 
@@ -295,24 +333,28 @@ void main()
   
   registry().registerHandle( std::make_unique< MultithreadRegistryHandle >() );
 
-
-  auto sink = factory->createStandardOutputSink(
-    [] (const Message& message)
+  Formatter formatter = 
+    [](const Message& message)
   {
-    //return "[" + message.loggerContext->name + "] " + message.content;
-    return string_format("[%s] {%s:%i} %s", 
+    auto ns = message.time.time_since_epoch().count();
+    return string_format("%lld [%s] {%s:%i} %s\n",
+      ns / 1000, // nanosec to microsec
       message.loggerContext->name.c_str(),
       message.callContext.function,
       message.callContext.line,
       message.content.c_str()
-      );
-  }
-  );
+    );
+  };
+
+
+  auto consoleSink = factory->createStandardOutputSink(formatter);
+  auto fileSink = factory->createFileSink("test.log", formatter);
  
   const std::string DEFAULT_LOGGER_NAME = "module name";
 
   auto logger = std::make_shared< Logger >(DEFAULT_LOGGER_NAME);
-  logger->sink = sink;
+  logger->sink = consoleSink;
+  logger->sink = fileSink;
   
   registry()->registerLogger(logger);
 
@@ -324,7 +366,7 @@ void main()
   const auto MILLION = THOUSAND * THOUSAND;
   //logger->filteringLevel = Level::NEVER;
 
-  for (int i = 0; i < THOUSAND; ++i)
+  for (int i = 0; i < MILLION; ++i)
   {
     //logger->debug(LOGGER_CALL_CONTEXT, "");
     //logger->debug(LOGGER_CALL_CONTEXT, "message...");
@@ -338,17 +380,16 @@ void main()
     //logger.critical(LOGGER_CALL_CONTEXT, "Critical error");
   }
   //doBreak = true;
+  logger->flush();
+
   auto end = DefaultClock::now();
 
   auto duration = end - begin;
+  
+
   std::cout << "total time: " << duration.count() * 1. / 1000000000. << "sec" << std::endl;
 
   //logger->flush();
-  //logger.debug(LOGGER_CALL_CONTEXT, "message 2");
-  //logger.debug(LOGGER_CALL_CONTEXT, "message 3");
-  //logger.debug(LOGGER_CALL_CONTEXT, "message 4");
-
-  //logger.flush();
 
   registry().unregisterHandle();
 }
