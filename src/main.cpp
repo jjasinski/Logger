@@ -276,6 +276,17 @@ logger::registry().releaseHandle();
 namespace logger
 {
 
+  template<typename ... Args>
+  std::string string_format(const std::string& format, Args ... args)
+  {
+    std::string result;
+
+    size_t size = snprintf(nullptr, 0, format.c_str(), args ...);
+    result.resize(size);
+    snprintf(&result[0], size, format.c_str(), args ...);
+    return std::move(result);
+  }
+
 } // logger
 
 void main()
@@ -288,14 +299,20 @@ void main()
   auto sink = factory->createStandardOutputSink(
     [] (const Message& message)
   {
-    return "[" + message.loggerContext->name + "] " + message.content;
+    //return "[" + message.loggerContext->name + "] " + message.content;
+    return string_format("[%s] {%s:%i} %s", 
+      message.loggerContext->name.c_str(),
+      message.callContext.function,
+      message.callContext.line,
+      message.content.c_str()
+      );
   }
   );
  
   const std::string DEFAULT_LOGGER_NAME = "module name";
 
   auto logger = std::make_shared< Logger >(DEFAULT_LOGGER_NAME);
-  //logger->sink = sink;
+  logger->sink = sink;
   
   registry()->registerLogger(logger);
 
@@ -307,7 +324,7 @@ void main()
   const auto MILLION = THOUSAND * THOUSAND;
   //logger->filteringLevel = Level::NEVER;
 
-  for (int i = 0; i < MILLION; ++i)
+  for (int i = 0; i < THOUSAND; ++i)
   {
     //logger->debug(LOGGER_CALL_CONTEXT, "");
     //logger->debug(LOGGER_CALL_CONTEXT, "message...");
