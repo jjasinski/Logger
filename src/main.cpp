@@ -192,10 +192,9 @@ public:
 
   virtual void send(std::unique_ptr<Message> message) override
   {
-    auto msg = formatter(*message);
-    file.write(msg.c_str(), msg.size());
-    //file << msg;
-    //file << formatter(*message);// << std::endl;
+    //auto msg = formatter(*message);
+    //file.write(msg.c_str(), msg.size());
+    file << formatter(*message);// << std::endl;
   }
 
   virtual void flush() override
@@ -249,9 +248,14 @@ public:
  
   virtual void flush() override
   {
+    std::lock_guard< std::mutex > lock(flushMt);
+
     mt.lock();
     auto localMessages = std::move(messages);
+    assert( messages.empty() );
     mt.unlock();
+    //std::lock_guard< std::mutex > lock(mt);
+    //auto& localMessages = messages;
 
     if (localMessages.empty())
     {
@@ -262,13 +266,15 @@ public:
     {
       internalSink->send(std::move(*it));
     }
+   //localMessages.clear();
     
-    internalSink->flush();
+   internalSink->flush();
   }
 private:
   std::shared_ptr< Sink > internalSink;
 
   std::mutex mt;
+  std::mutex flushMt; // only one thread can be inside flush() method at the time
   std::vector< std::unique_ptr<Message> > messages;
 };
 
@@ -336,6 +342,7 @@ void main()
   Formatter formatter = 
     [](const Message& message)
   {
+    //static long long prev
     auto ns = message.time.time_since_epoch().count();
     return string_format("%lld [%s] {%s:%i} %s\n",
       ns / 1000, // nanosec to microsec
@@ -346,34 +353,51 @@ void main()
     );
   };
 
+  long long lp = 1;
+  Formatter csvFormatter =
+    [&lp](const Message& message)
+  {
+    //static long long prev
+    auto ns = message.time.time_since_epoch().count();
+    return string_format("%lld,%lld,%s\n",
+      lp++,
+      ns,
+      message.content.c_str()
+    );
+  };
 
   auto consoleSink = factory->createStandardOutputSink(formatter);
   auto fileSink = factory->createFileSink("test.log", formatter);
+  auto csvSink = factory->createFileSink("out.csv", csvFormatter);
  
   const std::string DEFAULT_LOGGER_NAME = "module name";
+
+  //csvSink = std::make_shared< FileSink >("out.csv", csvFormatter);
 
   auto logger = std::make_shared< Logger >(DEFAULT_LOGGER_NAME);
   logger->sink = consoleSink;
   logger->sink = fileSink;
+  logger->sink = csvSink;
   
   registry()->registerLogger(logger);
 
   logger->debug(LOGGER_CALL_CONTEXT, "message 1");
   
   logger->filteringLevel = Level::DEBUG;
+  //logger->autoFlushLevel = Level::DEBUG;
   auto begin = DefaultClock::now();
   const auto THOUSAND = 1000;
   const auto MILLION = THOUSAND * THOUSAND;
   //logger->filteringLevel = Level::NEVER;
 
-  for (int i = 0; i < MILLION; ++i)
+  for (int i = 0; i < 10 * THOUSAND; ++i)
   {
     //logger->debug(LOGGER_CALL_CONTEXT, "");
     //logger->debug(LOGGER_CALL_CONTEXT, "message...");
     //logger->debug(LOGGER_CALL_CONTEXT, "message..." + std::to_string(i));
     
-    registry()->getLogger(DEFAULT_LOGGER_NAME)->debug(LOGGER_CALL_CONTEXT, "message...");
-    //registry()->getLogger(DEFAULT_LOGGER_NAME)->debug(LOGGER_CALL_CONTEXT, "message..." + std::to_string(i));
+    //registry()->getLogger(DEFAULT_LOGGER_NAME)->debug(LOGGER_CALL_CONTEXT, "message...");
+    registry()->getLogger(DEFAULT_LOGGER_NAME)->debug(LOGGER_CALL_CONTEXT, string_format("message no %d", i + 1));
     
     /*logger.debug(LOGGER_CALL_CONTEXT, "message A: " + std::to_string(i) + "/" + std::to_string(MILLION));*/
     //logger.critical(LOGGER_CALL_CONTEXT, "Error");

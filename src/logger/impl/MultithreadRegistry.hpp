@@ -18,7 +18,7 @@ namespace logger
     MultithreadRegistryHandle()
     {
       doBreak = false;
-      autoFlushingThread = makeAutoFlushingThread();
+      flushingThread = makeFlushingThread();
     }
 
     virtual ~MultithreadRegistryHandle()
@@ -26,7 +26,7 @@ namespace logger
       doBreak = true;
       try
       {
-        autoFlushingThread.join();
+        flushingThread.join();
       }
       catch (...)
       {
@@ -93,7 +93,7 @@ namespace logger
     std::shared_timed_mutex mutex;
     LoggersMap loggers;
     std::atomic_bool doBreak;
-    std::thread autoFlushingThread;
+    std::thread flushingThread;
 
     void flushingWork()
     {
@@ -126,7 +126,7 @@ namespace logger
 #endif
     }
 
-    std::thread makeAutoFlushingThread()
+    std::thread makeFlushingThread()
     {
       std::thread thread(
         [this]()
