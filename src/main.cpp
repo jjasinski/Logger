@@ -366,30 +366,41 @@ void main()
   logger->debug(LOGGER_CALL_CONTEXT, "message 1");
   
   logger->filteringLevel = Level::DEBUG;
-  //logger->autoFlushLevel = Level::DEBUG;
   auto begin = DefaultClock::now();
   const auto THOUSAND = 1000;
   const auto MILLION = THOUSAND * THOUSAND;
-  //logger->filteringLevel = Level::NEVER;
+  logger->filteringLevel = Level::NEVER;
 
-  const auto ITERATIONS = MILLION;
+  const auto ITERATIONS = MILLION * 5;
 
   auto threadWorker = [&]()
   {
     for (int i = 0; i < ITERATIONS; ++i)
     {
-      logger->debug(LOGGER_CALL_CONTEXT, "message... itertion #" + std::to_string(i));
+      //logger->debug(LOGGER_CALL_CONTEXT, "message... itertion #" + std::to_string(i));
+
+      logger->debug(LOGGER_CALL_CONTEXT, [&]()->std::string
+      {
+        return "message... itertion #" + std::to_string(i);
+      }
+      );
     }
   };
 
   auto THREAD_COUNT = 4;
   std::vector< std::thread > threads;
+#if 0
   std::generate_n(std::back_inserter(threads), THREAD_COUNT,
     [&]()
   {
     return std::thread(threadWorker);
   }
   );
+#else
+  threadWorker();
+#endif
+
+
   //for (int i = 0; i < THREAD_COUNT; i++)
   //{
   //  std::thread t(callback);
@@ -404,7 +415,6 @@ void main()
   );
 
 
-  //doBreak = true;
   //logger->flush();
 
   auto end = DefaultClock::now();

@@ -8,9 +8,11 @@ namespace logger
   class Logger
   {
   public:
-    explicit Logger(const std::string& aName)
+    typedef std::function< std::string() > MakeMessageCallback;
+
+    explicit Logger(const std::string& name)
       :
-      loggerContext(std::make_shared< LoggerContext >(aName)),
+      loggerContext(std::make_shared< LoggerContext >(name)),
       filteringLevel(Level::NEVER),
       autoFlushLevel(Level::NEVER),
       sink(std::make_shared< NullSink >())
@@ -31,9 +33,14 @@ namespace logger
       return log(aContext, Level::ERROR, std::move(aMsg));
     }
 
-    void debug(const CallContext& aContext, std::string&& aMsg)
+    void debug(const CallContext& context, std::string&& message)
     {
-      return log(aContext, Level::DEBUG, std::move(aMsg));
+      return log(context, Level::DEBUG, std::move(message));
+    }
+
+    void debug(const CallContext& context, MakeMessageCallback messgeCallback)
+    {
+      return log(context, Level::DEBUG, messgeCallback);
     }
 
     void flush()
@@ -49,26 +56,46 @@ namespace logger
   private:
     std::shared_ptr<const LoggerContext> loggerContext;
 
-    void log(const CallContext& aContext, Level aLevel, std::string&& aMsg)
+    void log(const CallContext& context, Level level, std::string&& aMsg)
     {
-      if (aLevel >= filteringLevel)
+      if (level >= filteringLevel)
       {
-        auto message = makeMessage(aContext);
-        message->level = aLevel;
+        auto message = makeMessage(context);
+        message->level = level;
         message->content = std::move(aMsg);
 
         sink->send(std::move(message));
-        if (aLevel >= autoFlushLevel)
-        {
-          sink->flush();
-        }
+        autoFlushIfNeeded(level);
       }
     }
 
-    std::unique_ptr< Message > makeMessage(const CallContext& aContext)
+    void log(const CallContext& context, Level level, MakeMessageCallback messgeCallback)
     {
-      return std::make_unique< Message >(aContext, loggerContext);
+      if (level >= filteringLevel)
+      {
+        auto message = makeMessage(context);
+        message->level = level;
+        message->content = messgeCallback();
+
+        sink->send(std::move(message));
+        autoFlushIfNeeded(level);
+      }
     }
+
+    std::unique_ptr< Message > makeMessage(const CallContext& context)
+    {
+      return std::make_unique< Message >(context, loggerContext);
+    }
+
+    void autoFlushIfNeeded(Level level)
+    {
+      if (level >= autoFlushLevel)
+      {
+        sink->flush();
+      }
+    }
+
+
   };
 
 } // end logger
