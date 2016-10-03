@@ -60,10 +60,4 @@ namespace logger
     std::unique_ptr< RegistryHandle > handle;
   };
 
-  //Registry& registry()
-  //{
-  //  static Registry instance;
-  //  return instance;
-  //}
-
 }// end logger
