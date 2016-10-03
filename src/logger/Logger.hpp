@@ -23,14 +23,15 @@ namespace logger
     std::atomic< Level > autoFlushLevel;
     std::shared_ptr< Sink > sink;
 
-    void critical(const CallContext& aContext, std::string&& aMsg)
+    /* Simple versions */
+    void critical(const CallContext& aContext, std::string&& message)
     {
-      return log(aContext, Level::CRITICAL, std::move(aMsg));
+      return log(aContext, Level::CRITICAL, std::move(message));
     }
 
-    void error(const CallContext& aContext, std::string&& aMsg)
+    void error(const CallContext& aContext, std::string&& message)
     {
-      return log(aContext, Level::ERROR, std::move(aMsg));
+      return log(aContext, Level::ERROR, std::move(message));
     }
 
     void debug(const CallContext& context, std::string&& message)
@@ -38,6 +39,7 @@ namespace logger
       return log(context, Level::DEBUG, std::move(message));
     }
 
+    /* Lazy Message Formation versions */
     void debug(const CallContext& context, MakeMessageCallback messgeCallback)
     {
       return log(context, Level::DEBUG, messgeCallback);
@@ -56,13 +58,13 @@ namespace logger
   private:
     std::shared_ptr<const LoggerContext> loggerContext;
 
-    void log(const CallContext& context, Level level, std::string&& aMsg)
+    void log(const CallContext& context, Level level, std::string&& content)
     {
       if (level >= filteringLevel)
       {
         auto message = makeMessage(context);
         message->level = level;
-        message->content = std::move(aMsg);
+        message->content = std::move(content);
 
         sink->send(std::move(message));
         autoFlushIfNeeded(level);
