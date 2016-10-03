@@ -1,9 +1,6 @@
 echo off
 
 SET SANDBOX=%CD%
-SET CMAKE_PATH=%SANDBOX%/BuildPlatform/tools/cmake
-SET CMAKE_ROOT=%CMAKE_PATH%/cmake
-SET PATH=%PATH%;%CMAKE_PATH%/bin
 
 SET BUILD_PATH=build
 
