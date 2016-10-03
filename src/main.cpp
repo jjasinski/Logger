@@ -7,6 +7,7 @@
 #include <vector>
 #include <mutex>
 #include <algorithm>
+#include <iterator>
 
 #include <ctime>
 #include <thread>
@@ -17,6 +18,7 @@
 #include "logger/Sink.hpp"
 #include "logger/Logger.hpp"
 #include "logger/Registry.hpp"
+#include "logger/StringHelpers.hpp"
 
 #include "logger/impl/MultithreadRegistry.hpp"
 
@@ -230,6 +232,7 @@ public:
 
 typedef std::shared_ptr< Sink > SinkPtr;
 
+
 class MultithreadSink : public Sink
 {
 public:
@@ -237,7 +240,6 @@ public:
     :
     internalSink(aSink)
   {
-    messages.reserve(10000);//10K
   }
 
   virtual void send(std::unique_ptr<Message> message) override
@@ -251,34 +253,29 @@ public:
     std::lock_guard< std::mutex > lock(flushMt);
 
     mt.lock();
-    auto localMessages = std::move(messages);
+    auto messagesBuffer = std::move(messages);
     assert( messages.empty() );
     mt.unlock();
-    //std::lock_guard< std::mutex > lock(mt);
-    //auto& localMessages = messages;
 
-    if (localMessages.empty())
-    {
-      return;
-    }
    // consume queue by target Sink
-   for (auto it = localMessages.begin(); it != localMessages.end(); ++it)
+   for (auto it = messagesBuffer.begin(); it != messagesBuffer.end(); ++it)
     {
       internalSink->send(std::move(*it));
     }
-   //localMessages.clear();
     
    internalSink->flush();
   }
+
 private:
   std::shared_ptr< Sink > internalSink;
 
-  std::mutex mt;
   std::mutex flushMt; // only one thread can be inside flush() method at the time
+
+  std::mutex mt;
   std::vector< std::unique_ptr<Message> > messages;
 };
 
-class MultthreadSinkFactory : public SinkFactory
+class MultithreadSinkFactory : public SinkFactory
 {
 public:
   typedef std::shared_ptr< Sink > SinkPtr;
@@ -316,26 +313,10 @@ logger->info(...).flush();
 logger::registry().releaseHandle();
 */
 
-namespace logger
-{
-
-  template<typename ... Args>
-  std::string string_format(const std::string& format, Args ... args)
-  {
-    std::string result;
-
-    size_t size = snprintf(nullptr, 0, format.c_str(), args ...) + 1; // extra place for '\0'
-    result.resize(size);
-    snprintf(&result[0], size, format.c_str(), args ...); // generate string with '\0' at the end
-    result.resize(size - 1); // cut the last '\0' character
-    return std::move(result);
-  }
-
-} // logger
 
 void main()
 {
-  auto factory = std::make_unique< MultthreadSinkFactory >();
+  auto factory = std::make_unique< MultithreadSinkFactory >();
   
   registry().registerHandle( std::make_unique< MultithreadRegistryHandle >() );
 
@@ -344,9 +325,10 @@ void main()
   {
     //static long long prev
     auto ns = message.time.time_since_epoch().count();
-    return string_format("%lld [%s] {%s:%i} %s\n",
+    return string_format("%lld [%s] {%s, %s:%i} %s\n",
       ns / 1000, // nanosec to microsec
       message.loggerContext->name.c_str(),
+      toString(message.threadId).c_str(),
       message.callContext.function,
       message.callContext.line,
       message.content.c_str()
@@ -368,7 +350,7 @@ void main()
 
   auto consoleSink = factory->createStandardOutputSink(formatter);
   auto fileSink = factory->createFileSink("test.log", formatter);
-  auto csvSink = factory->createFileSink("out.csv", csvFormatter);
+  //auto csvSink = factory->createFileSink("out.csv", csvFormatter);
  
   const std::string DEFAULT_LOGGER_NAME = "module name";
 
@@ -377,7 +359,7 @@ void main()
   auto logger = std::make_shared< Logger >(DEFAULT_LOGGER_NAME);
   logger->sink = consoleSink;
   logger->sink = fileSink;
-  logger->sink = csvSink;
+  //logger->sink = csvSink;
   
   registry()->registerLogger(logger);
 
@@ -390,21 +372,40 @@ void main()
   const auto MILLION = THOUSAND * THOUSAND;
   //logger->filteringLevel = Level::NEVER;
 
-  for (int i = 0; i < 10 * THOUSAND; ++i)
+  const auto ITERATIONS = MILLION;
+
+  auto threadWorker = [&]()
   {
-    //logger->debug(LOGGER_CALL_CONTEXT, "");
-    //logger->debug(LOGGER_CALL_CONTEXT, "message...");
-    //logger->debug(LOGGER_CALL_CONTEXT, "message..." + std::to_string(i));
-    
-    //registry()->getLogger(DEFAULT_LOGGER_NAME)->debug(LOGGER_CALL_CONTEXT, "message...");
-    registry()->getLogger(DEFAULT_LOGGER_NAME)->debug(LOGGER_CALL_CONTEXT, string_format("message no %d", i + 1));
-    
-    /*logger.debug(LOGGER_CALL_CONTEXT, "message A: " + std::to_string(i) + "/" + std::to_string(MILLION));*/
-    //logger.critical(LOGGER_CALL_CONTEXT, "Error");
-    //logger.critical(LOGGER_CALL_CONTEXT, "Critical error");
+    for (int i = 0; i < ITERATIONS; ++i)
+    {
+      logger->debug(LOGGER_CALL_CONTEXT, "message... itertion #" + std::to_string(i));
+    }
+  };
+
+  auto THREAD_COUNT = 4;
+  std::vector< std::thread > threads;
+  std::generate_n(std::back_inserter(threads), THREAD_COUNT,
+    [&]()
+  {
+    return std::thread(threadWorker);
   }
+  );
+  //for (int i = 0; i < THREAD_COUNT; i++)
+  //{
+  //  std::thread t(callback);
+  //  threads.push_back( std::move(t) );
+  //}
+
+  std::for_each(threads.begin(), threads.end(), 
+    [](std::thread& t)
+  {
+    t.join();
+  }
+  );
+
+
   //doBreak = true;
-  logger->flush();
+  //logger->flush();
 
   auto end = DefaultClock::now();
 
@@ -412,6 +413,7 @@ void main()
   
 
   std::cout << "total time: " << duration.count() * 1. / 1000000000. << "sec" << std::endl;
+  std::cout << "mean time: " << duration.count() * 1. / ITERATIONS << "nano sec" << std::endl;
 
   //logger->flush();
 
