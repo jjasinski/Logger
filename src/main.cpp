@@ -25,10 +25,6 @@
 #include "logger/SinkFactory.hpp"
 
 #include "logger/details/MultithreadRegistry.hpp"
-#include "logger/details/StandardOutputSink.hpp"
-#include "logger/details/FileSink.hpp"
-#include "logger/details/MultithreadSink.hpp"
-#include "logger/details/MultithreadSinkFactory.hpp"
 
 // TODO
 // add posibility of flushing from the same line like:
@@ -61,7 +57,7 @@ logger::registry().releaseHandle();
 
 void main()
 {
-  auto factory = std::make_unique< details::MultithreadSinkFactory >();
+  //auto factory = std::make_unique< details::MultithreadSinkFactory >();
 
   registry().registerHandle(std::make_unique< MultithreadRegistryHandle >());
 
@@ -93,8 +89,8 @@ void main()
     );
   };
 
-  auto consoleSink = factory->createStandardOutputSink(formatter);
-  auto fileSink = factory->createFileSink("test.log", formatter);
+  auto consoleSink = registry()->getSinkFactory()->createStandardOutputSink(formatter);
+  auto fileSink = registry()->getSinkFactory()->createFileSink("test.log", formatter);
   //auto csvSink = factory->createFileSink("out.csv", csvFormatter);
 
   const std::string DEFAULT_LOGGER_NAME = "module name";

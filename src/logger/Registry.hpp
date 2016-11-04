@@ -1,7 +1,9 @@
 #pragma once;
 
-#include "logger/Logger.hpp"
 #include <cassert>
+
+#include "logger/Logger.hpp"
+#include "logger/SinkFactory.hpp"
 
 namespace logger
 {
@@ -16,6 +18,9 @@ public:
   virtual LoggerPtr getLogger(const std::string& name) = 0;
   virtual LoggerPtr unregisterLogger(const std::string& name) = 0;
   virtual void registerLogger(LoggerPtr logger) = 0;
+
+  // TODO maybe it should be separated from Logger functions?
+  virtual std::shared_ptr< SinkFactory > getSinkFactory() = 0;
 };
 
 

@@ -6,6 +6,8 @@
 
 #include "logger/Registry.hpp"
 
+#include "logger/details/MultithreadSinkFactory.hpp"
+
 namespace logger
 {
 
@@ -89,6 +91,11 @@ public:
     loggers[name] = logger;
     mutex.unlock();
   }
+
+  virtual std::shared_ptr< SinkFactory > getSinkFactory()
+  {
+    return std::make_shared< details::MultithreadSinkFactory >();
+  }
 private:
   std::shared_timed_mutex mutex;
   LoggersMap loggers;
@@ -124,7 +131,7 @@ private:
     mutex.unlock_shared();
     std::this_thread::yield();
 #endif
-  }
+}
 
   std::thread makeFlushingThread()
   {
