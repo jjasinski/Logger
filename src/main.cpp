@@ -27,6 +27,8 @@
 #include "logger/details/MultithreadRegistry.hpp"
 #include "logger/details/StandardOutputSink.hpp"
 #include "logger/details/FileSink.hpp"
+#include "logger/details/MultithreadSink.hpp"
+#include "logger/details/MultithreadSinkFactory.hpp"
 
 // TODO
 // add posibility of flushing from the same line like:
@@ -41,112 +43,6 @@ using namespace logger;
 //  virtual std::string format(const Message& message) const = 0;
 //};
 
-class SimpleStandardOutputSink : public Sink
-{
-public:
-  SimpleStandardOutputSink()
-    :
-    begin(DefaultClock::now())
-  {
-
-  }
-
-  // Inherited via Sink
-  virtual void send(std::unique_ptr<Message> message) override
-  {
-    auto duration = message->time - begin;
-    auto ms = duration.count() / 1000;// / (10 >> 3);
-    if (message->level >= Level::WARNING)
-    {
-      std::cerr << ms << ": " << message->content << std::endl;
-    }
-    else
-    {
-      std::cout << ms << ": " << message->content << std::endl;
-    }
-  }
-
-  virtual void flush() override
-  {
-    //
-  }
-  const DefaultClock::time_point begin;
-  //std::atomic_bool 
-};
-
-class MultithreadSink : public Sink
-{
-public:
-  typedef std::vector< std::unique_ptr<Message> > Messages;
-
-  explicit MultithreadSink(std::shared_ptr< Sink > aSink)
-    :
-    internalSink(aSink)
-  {
-  }
-
-  virtual void send(std::unique_ptr<Message> message) override
-  {
-    std::lock_guard< std::mutex > lock(mt);
-    messages.push_back(std::move(message));
-  }
-
-  virtual void flush() override
-  {
-    std::lock_guard< std::mutex > lock(flushMt);
-
-    auto buffer = extractMessages();
-    std::for_each(buffer.begin(), buffer.end(),
-      [&](auto&& message)
-    {
-      internalSink->send(std::move(message));
-    }
-    );
-
-    internalSink->flush();
-  }
-
-private:
-  std::shared_ptr< Sink > internalSink;
-
-  std::mutex flushMt; // only one thread can be inside flush() method at the time
-
-  std::mutex mt;
-  Messages messages;
-  std::queue< std::unique_ptr<Message> > processingMessages;
-
-  Messages extractMessages()
-  {
-    std::lock_guard< std::mutex > lock(mt);
-    auto buffer = std::move(messages);
-    assert(messages.empty());
-    return std::move(buffer);
-  }
-};
-
-class MultithreadSinkFactory : public SinkFactory
-{
-public:
-  typedef std::shared_ptr< Sink > SinkPtr;
-
-  virtual SinkPtr createStandardOutputSink(Formatter formatter)
-  {
-    auto internalSink = std::make_shared< details::StandardOutputSink< AtomicFlag > >(formatter);
-    return makeMultithreadSink(internalSink);
-  }
-
-  virtual SinkPtr createFileSink(const std::string& name, Formatter formatter)
-  {
-    auto internalSink = std::make_shared< details::FileSink >(name, formatter);
-    return makeMultithreadSink(internalSink);
-  }
-
-private:
-  SinkPtr makeMultithreadSink(SinkPtr internalSink)
-  {
-    return std::make_shared< MultithreadSink >(internalSink);
-  }
-};
 
 /*
 // register general logger mechanism (multithreading or not)
@@ -165,7 +61,7 @@ logger::registry().releaseHandle();
 
 void main()
 {
-  auto factory = std::make_unique< MultithreadSinkFactory >();
+  auto factory = std::make_unique< details::MultithreadSinkFactory >();
 
   registry().registerHandle(std::make_unique< MultithreadRegistryHandle >());
 
