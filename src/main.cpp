@@ -59,7 +59,7 @@ void main()
 {
   //auto factory = std::make_unique< details::MultithreadSinkFactory >();
 
-  registry().registerHandle(std::make_unique< MultithreadRegistryHandle >());
+  registry().registerHandle(std::make_unique< details::MultithreadRegistryHandle >());
 
   Formatter formatter =
     [](const Message& message)

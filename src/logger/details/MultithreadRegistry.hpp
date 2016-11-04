@@ -10,6 +10,8 @@
 
 namespace logger
 {
+namespace details
+{
 
 class MultithreadRegistryHandle : public RegistryHandle
 {
@@ -151,4 +153,5 @@ private:
 
 };
 
+} // details
 } // logger
