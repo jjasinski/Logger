@@ -5,31 +5,31 @@
 namespace logger
 {
 
-  class Sink
+class Sink
+{
+public:
+  Sink() = default;
+  virtual ~Sink() = default;
+
+  virtual void send(std::unique_ptr< Message > message) = 0;
+  virtual void flush() = 0;
+};
+
+class NullSink : public Sink
+{
+public:
+  NullSink() = default;
+  virtual ~NullSink() = default;
+
+  virtual void send(std::unique_ptr< Message > message)
   {
-  public:
-    Sink() = default;
-    virtual ~Sink() = default;
+    // empty implementation
+  }
 
-    virtual void send(std::unique_ptr< Message > message) = 0;
-    virtual void flush() = 0;
-  };
-
-  class NullSink : public Sink
+  virtual void flush()
   {
-  public:
-    NullSink() = default;
-    virtual ~NullSink() = default;
-
-    virtual void send(std::unique_ptr< Message > message)
-    {
-      // empty implementation
-    }
-
-    virtual void flush()
-    {
-      // empty implementation
-    }
-  };
+    // empty implementation
+  }
+};
 
 }// logger

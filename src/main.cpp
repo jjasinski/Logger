@@ -8,6 +8,7 @@
 #include <mutex>
 #include <algorithm>
 #include <iterator>
+#include <queue>
 
 #include <ctime>
 #include <thread>
@@ -20,7 +21,12 @@
 #include "logger/Registry.hpp"
 #include "logger/StringHelpers.hpp"
 
-#include "logger/impl/MultithreadRegistry.hpp"
+#include "logger/BinaryFlag.hpp"
+#include "logger/SinkFactory.hpp"
+
+#include "logger/details/MultithreadRegistry.hpp"
+#include "logger/details/StandardOutputSink.hpp"
+#include "logger/details/FileSink.hpp"
 
 // TODO
 // add posibility of flushing from the same line like:
@@ -35,7 +41,7 @@ using namespace logger;
 //  virtual std::string format(const Message& message) const = 0;
 //};
 
-class SimpleStandardOutputSink: public Sink
+class SimpleStandardOutputSink : public Sink
 {
 public:
   SimpleStandardOutputSink()
@@ -56,7 +62,7 @@ public:
     }
     else
     {
-      std::cout << ms  << ": " << message->content << std::endl;
+      std::cout << ms << ": " << message->content << std::endl;
     }
   }
 
@@ -68,174 +74,11 @@ public:
   //std::atomic_bool 
 };
 
-//class SinkFactory
-//{
-//public:
-//  SinkFactory() = default;
-//  virtual ~SinkFactory() = default;
-//
-//  typedef std::shared_ptr< Sink > SinkPtr;
-//
-//  virtual SinkPtr createStandardOutputSink() = 0;
-//};
-
-// TODO add NullFlag with empty functions?
-
-struct AtomicFlag
-{
-  AtomicFlag(bool flag)
-    :
-    value(flag)
-  {
-  }
-
-  bool operator=(bool flag)
-  {
-    return value = flag;
-  }
-
-  operator bool() const
-  {
-    return value;
-  }
-
-  bool exchange(bool flag)
-  {
-    return value.exchange(flag);
-  }
-
-  std::atomic_bool value;
-};
-
-struct NotAtomicFlag
-{
-  NotAtomicFlag(bool flag)
-    :
-    value(flag)
-  {
-  }
-
-  bool operator=(bool flag)
-  {
-    return value = flag;
-  }
-
-  operator bool() const
-  {
-    return value;
-  }
-
-  bool exchange(bool flag)
-  {
-    bool res = value;
-    value = flag;
-    return res;
-  }
-
-  bool value;
-};
-
-
-typedef std::function < std::string(const Message&) > Formatter;
-
-template<typename BinaryFlag>
-class StandardOutputSink : public Sink
-{
-public:
-  explicit StandardOutputSink(Formatter _formatter)
-    :
-    formatter(_formatter),
-    errNeedsFlush(false),
-    outNeedsFlush(false)
-  {
-
-  }
-
-  virtual void send(std::unique_ptr<Message> message) override
-  {
-    if (message->level >= Level::WARNING)
-    {
-      std::cerr << formatter(*message) << std::endl;
-      errNeedsFlush = true;
-    }
-    else
-    {
-      std::cout << formatter(*message);// << std::endl;
-      outNeedsFlush = true;
-    }
-  }
-  
-  virtual void flush() override
-  {
-    if (errNeedsFlush.exchange(false))
-    {
-      std::cerr.flush();
-    }
-    if (outNeedsFlush.exchange(false))
-    {
-      std::cout.flush();
-    }
-  }
-private:
-  Formatter formatter;
-  BinaryFlag errNeedsFlush;
-  BinaryFlag outNeedsFlush;
-};
-
-class FileSink : public Sink
-{
-public:
-  explicit FileSink(const std::string& name, Formatter _formatter)
-    :
-    formatter(_formatter)
-  {
-    file.open(name, std::ofstream::out/* | std::ofstream::app*/);
-  }
-
-  virtual void send(std::unique_ptr<Message> message) override
-  {
-    //auto msg = formatter(*message);
-    //file.write(msg.c_str(), msg.size());
-    file << formatter(*message);// << std::endl;
-  }
-
-  virtual void flush() override
-  {
-    file.flush();
-  }
-private:
-  std::ofstream file;
-  Formatter formatter;
-};
-
-class StandardFormatter
-{
-public:
-  std::string operator()(const Message& message) const
-  {
-    return message.content;
-  }
-};
-
-class SinkFactory
-{
-public:
-  typedef std::shared_ptr< Sink > SinkPtr;
-
-  SinkFactory() = default;
-  virtual ~SinkFactory() = default;
-
-  virtual SinkPtr createStandardOutputSink(Formatter formatter) = 0;
-
-  virtual SinkPtr createFileSink(const std::string& name, Formatter formatter) = 0;
-};
-
-typedef std::shared_ptr< Sink > SinkPtr;
-
-
 class MultithreadSink : public Sink
 {
 public:
+  typedef std::vector< std::unique_ptr<Message> > Messages;
+
   explicit MultithreadSink(std::shared_ptr< Sink > aSink)
     :
     internalSink(aSink)
@@ -247,23 +90,20 @@ public:
     std::lock_guard< std::mutex > lock(mt);
     messages.push_back(std::move(message));
   }
- 
+
   virtual void flush() override
   {
     std::lock_guard< std::mutex > lock(flushMt);
 
-    mt.lock();
-    auto messagesBuffer = std::move(messages);
-    assert( messages.empty() );
-    mt.unlock();
-
-   // consume queue by target Sink
-   for (auto it = messagesBuffer.begin(); it != messagesBuffer.end(); ++it)
+    auto buffer = extractMessages();
+    std::for_each(buffer.begin(), buffer.end(),
+      [&](auto&& message)
     {
-      internalSink->send(std::move(*it));
+      internalSink->send(std::move(message));
     }
-    
-   internalSink->flush();
+    );
+
+    internalSink->flush();
   }
 
 private:
@@ -272,7 +112,16 @@ private:
   std::mutex flushMt; // only one thread can be inside flush() method at the time
 
   std::mutex mt;
-  std::vector< std::unique_ptr<Message> > messages;
+  Messages messages;
+  std::queue< std::unique_ptr<Message> > processingMessages;
+
+  Messages extractMessages()
+  {
+    std::lock_guard< std::mutex > lock(mt);
+    auto buffer = std::move(messages);
+    assert(messages.empty());
+    return std::move(buffer);
+  }
 };
 
 class MultithreadSinkFactory : public SinkFactory
@@ -282,13 +131,13 @@ public:
 
   virtual SinkPtr createStandardOutputSink(Formatter formatter)
   {
-    auto internalSink = std::make_shared< StandardOutputSink< AtomicFlag > >(formatter);
+    auto internalSink = std::make_shared< details::StandardOutputSink< AtomicFlag > >(formatter);
     return makeMultithreadSink(internalSink);
   }
 
   virtual SinkPtr createFileSink(const std::string& name, Formatter formatter)
   {
-    auto internalSink = std::make_shared< FileSink >(name, formatter);
+    auto internalSink = std::make_shared< details::FileSink >(name, formatter);
     return makeMultithreadSink(internalSink);
   }
 
@@ -317,10 +166,10 @@ logger::registry().releaseHandle();
 void main()
 {
   auto factory = std::make_unique< MultithreadSinkFactory >();
-  
-  registry().registerHandle( std::make_unique< MultithreadRegistryHandle >() );
 
-  Formatter formatter = 
+  registry().registerHandle(std::make_unique< MultithreadRegistryHandle >());
+
+  Formatter formatter =
     [](const Message& message)
   {
     //static long long prev
@@ -351,7 +200,7 @@ void main()
   auto consoleSink = factory->createStandardOutputSink(formatter);
   auto fileSink = factory->createFileSink("test.log", formatter);
   //auto csvSink = factory->createFileSink("out.csv", csvFormatter);
- 
+
   const std::string DEFAULT_LOGGER_NAME = "module name";
 
   //csvSink = std::make_shared< FileSink >("out.csv", csvFormatter);
@@ -360,18 +209,18 @@ void main()
   logger->sink = consoleSink;
   logger->sink = fileSink;
   //logger->sink = csvSink;
-  
+
   registry()->registerLogger(logger);
 
   logger->debug(LOGGER_CALL_CONTEXT, "message 1");
-  
+
   logger->filteringLevel = Level::DEBUG;
   auto begin = DefaultClock::now();
   const auto THOUSAND = 1000;
   const auto MILLION = THOUSAND * THOUSAND;
-  logger->filteringLevel = Level::NEVER;
+  logger->filteringLevel = Level::DEBUG;
 
-  const auto ITERATIONS = MILLION * 5;
+  const auto ITERATIONS = MILLION;
 
   auto threadWorker = [&]()
   {
@@ -387,9 +236,9 @@ void main()
     }
   };
 
-  auto THREAD_COUNT = 4;
+  auto THREAD_COUNT = 2;
   std::vector< std::thread > threads;
-#if 0
+#if 1
   std::generate_n(std::back_inserter(threads), THREAD_COUNT,
     [&]()
   {
@@ -407,7 +256,7 @@ void main()
   //  threads.push_back( std::move(t) );
   //}
 
-  std::for_each(threads.begin(), threads.end(), 
+  std::for_each(threads.begin(), threads.end(),
     [](std::thread& t)
   {
     t.join();
@@ -415,17 +264,24 @@ void main()
   );
 
 
-  //logger->flush();
+  //
 
   auto end = DefaultClock::now();
-
   auto duration = end - begin;
-  
 
-  std::cout << "total time: " << duration.count() * 1. / 1000000000. << "sec" << std::endl;
-  std::cout << "mean time: " << duration.count() * 1. / ITERATIONS << "nano sec" << std::endl;
 
-  //logger->flush();
+  std::cout << "sending time (only register): " << duration.count() * 1. / 1000000000. << "sec" << std::endl;
+  std::cout << "[mean time: " << duration.count() * 1. / ITERATIONS << "nano sec]" << std::endl;
+
+
+  logger->flush();
+  auto finished = DefaultClock::now();
+  auto fullDuration = finished - begin;
+
+  std::cout << "full time (register and writing): " << fullDuration.count() * 1. / 1000000000. << "sec" << std::endl;
+  std::cout << "[mean time: " << fullDuration.count() * 1. / ITERATIONS << "nano sec]" << std::endl;
+
+  logger->flush();
 
   registry().unregisterHandle();
 }

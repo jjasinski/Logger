@@ -51,7 +51,7 @@ struct LoggerContext
 
 typedef std::chrono::high_resolution_clock DefaultClock;
 
-enum class Level 
+enum class Level
 {
   TRACE = 0,
   DEBUG_FINEST,
@@ -82,7 +82,7 @@ struct Message
 
   Level level;
   std::string content;
-    
+
   // additional information
   std::chrono::time_point< DefaultClock > time;
   std::thread::id threadId;
