@@ -98,7 +98,7 @@ void main()
   //csvSink = std::make_shared< FileSink >("out.csv", csvFormatter);
 
   auto logger = std::make_shared< Logger >(DEFAULT_LOGGER_NAME);
-  logger->sink = consoleSink;
+  //logger->sink = consoleSink;
   logger->sink = fileSink;
   //logger->sink = csvSink;
 
@@ -128,7 +128,7 @@ void main()
     }
   };
 
-  auto THREAD_COUNT = 2;
+  auto THREAD_COUNT = 4;
   std::vector< std::thread > threads;
 #if 1
   std::generate_n(std::back_inserter(threads), THREAD_COUNT,
