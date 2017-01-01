@@ -19,9 +19,9 @@ add_library (${PROJECT_NAME} INTERFACE)
 target_include_directories(${PROJECT_NAME} INTERFACE 
   ${PROJECT_BINARY_DIR}/src
   )
-target_sources(${PROJECT_NAME} INTERFACE 
-  ${PROJECT_BINARY_DIR}/src/concurrentqueue.h
-)
+#target_sources(${PROJECT_NAME} INTERFACE 
+#  ${PROJECT_BINARY_DIR}/src/concurrentqueue.h
+#)
 
 #add_dependencies (${PROJECT_NAME} ConcurrentQueue-download)
 

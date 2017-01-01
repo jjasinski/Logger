@@ -7,7 +7,12 @@
 
 #include "logger/details/StandardOutputSink.hpp"
 #include "logger/details/FileSink.hpp"
+
+#ifdef LOGGER_USE_MOODYCAMEL_CONCURRENT_QUEUE
+#include "logger/details/ConcurrentQueueSink.hpp"
+#else
 #include "logger/details/MultithreadSink.hpp"
+#endif
 
 namespace logger
 {
@@ -18,6 +23,13 @@ class MultithreadSinkFactory : public SinkFactory
 {
 public:
   typedef std::shared_ptr< Sink > SinkPtr;
+
+  
+#ifdef LOGGER_USE_MOODYCAMEL_CONCURRENT_QUEUE
+  typedef ConcurrentQueueSink DefinedMultitherdSink;
+#else
+   typedef MultithreadSink DefinedMultitherdSink;
+#endif
 
   virtual SinkPtr createStandardOutputSink(Formatter formatter)
   {
@@ -34,7 +46,12 @@ public:
 private:
   SinkPtr makeMultithreadSink(SinkPtr internalSink)
   {
+#ifdef LOGGER_USE_MOODYCAMEL_CONCURRENT_QUEUE
+    return std::make_shared< ConcurrentQueueSink >(internalSink);
+#else
     return std::make_shared< MultithreadSink >(internalSink);
+#endif
+    //
   }
 };
 
