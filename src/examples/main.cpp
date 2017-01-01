@@ -26,6 +26,9 @@
 
 #include "logger/details/MultithreadRegistry.hpp"
 
+
+#include "logger/details/FileSink.hpp"
+
 #include <concurrentqueue.h>
 //#include <concurrent_queue.h>
 
@@ -57,6 +60,60 @@ logger->info(...).flush();
 logger::registry().releaseHandle();
 */
 
+
+class MoodyCamelMultithreadSink : public Sink
+{
+public:
+  explicit MoodyCamelMultithreadSink(std::shared_ptr< Sink > aSink)
+    :
+    internalSink(aSink)
+  {
+  }
+
+  virtual void send(std::unique_ptr<Message> message) override
+  {
+    messages.enqueue(std::move(message));
+  }
+
+  virtual void flush() override
+  {
+    std::lock_guard< std::mutex > lock(flushMt);
+    //std::array< std::unique_ptr<Message>, 16 > buffer;
+
+    //while (auto count = messages.try_dequeue_bulk(buffer.begin(), buffer.size()))
+    //{
+    //  for (int i = 0; i < count; ++i)
+    //  {
+    //    internalSink->send(std::move(buffer[i]));
+    //  }
+    //}
+    std::unique_ptr<Message> message;
+    while (messages.try_dequeue(message))
+    {
+      internalSink->send(std::move(message));
+    }
+
+    internalSink->flush();
+  }
+
+private:
+  std::shared_ptr< Sink > internalSink;
+
+  std::mutex flushMt; // only one thread can be inside flush() method at the time
+
+  struct MyTraits : public moodycamel::ConcurrentQueueDefaultTraits
+  {
+    static const size_t BLOCK_SIZE = sizeof(std::unique_ptr<Message>);       // Use bigger blocks
+  };
+
+  moodycamel::ConcurrentQueue< std::unique_ptr<Message>/*, MyTraits*/ > messages;
+};
+
+  std::shared_ptr< logger::Sink > makeConcurrentQueueFileSink(const std::string& name, Formatter formatter)
+  {
+    auto internalSink = std::make_shared< logger::details::FileSink >(name, formatter);
+    return std::make_shared< MoodyCamelMultithreadSink >(internalSink);
+  }
 
 void main()
 {
@@ -96,14 +153,19 @@ void main()
   auto fileSink = registry()->getSinkFactory()->createFileSink("test.log", formatter);
   //auto csvSink = factory->createFileSink("out.csv", csvFormatter);
 
+  auto fileSinkMC = makeConcurrentQueueFileSink("test_mc.log", formatter);
+
+
   const std::string DEFAULT_LOGGER_NAME = "module name";
 
   //csvSink = std::make_shared< FileSink >("out.csv", csvFormatter);
 
   auto logger = std::make_shared< Logger >(DEFAULT_LOGGER_NAME);
   //logger->sink = consoleSink;
-  logger->sink = fileSink;
+  //logger->sink = fileSink;
   //logger->sink = csvSink;
+  logger->sink = fileSinkMC;
+
 
   registry()->registerLogger(logger);
 
