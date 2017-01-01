@@ -5,7 +5,7 @@ project (Logger)
 cmake_policy (SET CMP0000 NEW) # A minimum required CMake version must be specified.
 cmake_policy (SET CMP0017 NEW) # Prefer files from the CMake module directory when including from there.
 
-#SET (CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/CMake-modules)
+LIST (INSERT CMAKE_MODULE_PATH 0 ${PROJECT_SOURCE_DIR}/CMake-modules)
 
 SET (SANDBOX ${PROJECT_SOURCE_DIR})
 
@@ -14,7 +14,7 @@ SET (CMAKE_DEBUG_POSTFIX "_d")
 
 if (WIN32)
     if (MSVC)
-	endif ()
+  endif ()
 elseif (UNIX)
     add_definitions ("-DWall")
 endif()
@@ -46,4 +46,5 @@ set_target_properties(${INCLUDE_PROJECT_NAME} PROPERTIES LINKER_LANGUAGE CXX)
 
 include_directories (${INCLUDE_DIRECTORY})
 
+add_subdirectory (3rdparty/concurrentqueue)
 add_subdirectory (src/examples)

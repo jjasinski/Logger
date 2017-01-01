@@ -26,6 +26,9 @@
 
 #include "logger/details/MultithreadRegistry.hpp"
 
+#include <concurrentqueue.h>
+//#include <concurrent_queue.h>
+
 // TODO
 // add posibility of flushing from the same line like:
 // logger.debug(...).flush();
@@ -112,7 +115,7 @@ void main()
   const auto MILLION = THOUSAND * THOUSAND;
   logger->filteringLevel = Level::DEBUG;
 
-  const auto ITERATIONS = MILLION;
+  const auto ITERATIONS = 100 * THOUSAND;//MILLION;
 
   auto threadWorker = [&]()
   {
