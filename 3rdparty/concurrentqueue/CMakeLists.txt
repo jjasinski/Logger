@@ -23,5 +23,5 @@ target_sources(${PROJECT_NAME} INTERFACE
   ${PROJECT_BINARY_DIR}/src/concurrentqueue.h
 )
 
-add_dependencies (${PROJECT_NAME} ConcurrentQueue-download)
+#add_dependencies (${PROJECT_NAME} ConcurrentQueue-download)
 
