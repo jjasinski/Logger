@@ -67,7 +67,7 @@ enum class Level
 
 struct Message
 {
-  explicit Message(const CallContext& aCall, std::shared_ptr<const LoggerContext> aLogger)
+  explicit Message(const CallContext& aCall, std::shared_ptr<const LoggerContext>& aLogger)
     :
     callContext(aCall),
     loggerContext(aLogger),

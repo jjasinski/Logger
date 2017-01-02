@@ -48,7 +48,7 @@ private:
     static const size_t BLOCK_SIZE = sizeof(std::unique_ptr<Message>);       // Use bigger blocks
   };
 
-  moodycamel::ConcurrentQueue< std::unique_ptr<Message>/*, MyTraits*/ > messages;
+  moodycamel::ConcurrentQueue< std::unique_ptr<Message>, MyTraits > messages;
 };
 
 } // details
