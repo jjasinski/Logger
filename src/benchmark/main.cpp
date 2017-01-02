@@ -27,7 +27,8 @@
 #include "logger/details/MultithreadRegistry.hpp"
 
 /*
-  implementation inspired by NanoLog benchmark: https://github.com/Iyengar111/NanoLog/blob/master/nano_vs_spdlog_vs_g3log_vs_reckless.cpp
+  implementation inspired by NanoLog benchmark
+  (https://github.com/Iyengar111/NanoLog/blob/master/nano_vs_spdlog_vs_g3log_vs_reckless.cpp)
 */
 
 const auto THOUSAND = 1000;
@@ -71,8 +72,8 @@ Latencies runLogBenchmark(Function&& f, char const* msg)
   }
 
   printf("Latency numbers in microseconds for %d iterations: \n"
-         "%9s|%9s|%9s|%9s|\n"
-         "%9lld|%9lld|%9lf||%9lfs\n",
+         "%9s|%9s|%9s|%13s|\n"
+         "%9lld|%9lld|%9lf|%13lfs|\n",
          ITERATIONS,
          "Min", "Max", "Average", "Total (sec)",
          latencies.minimum, latencies.maximum, (latencies.sum * 1.0) / ITERATIONS, (latencies.sum * 0.000001)
