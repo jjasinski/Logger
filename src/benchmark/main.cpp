@@ -32,7 +32,7 @@
 
 const auto THOUSAND = 1000;
 const auto MILLION = THOUSAND * THOUSAND;
-const auto ITERATIONS = MILLION;// 100 * THOUSAND;
+const auto ITERATIONS = 250 * THOUSAND;// MILLION;
 
 /* Returns microseconds since epoch */
 uint64_t timestamp_now()
@@ -71,39 +71,60 @@ Latencies runLogBenchmark(Function&& f, char const* msg)
   }
 
   printf("Latency numbers in microseconds for %d iterations: \n"
-         "%9s|%9s|%9s|\n"
-         "%9lld|%9lld|%9lf|\n",
+         "%9s|%9s|%9s|%9s|\n"
+         "%9lld|%9lld|%9lf||%9lfs\n",
          ITERATIONS,
-         "Min", "Max", "Average",
-         latencies.minimum, latencies.maximum, (latencies.sum * 1.0) / ITERATIONS
+         "Min", "Max", "Average", "Total (sec)",
+         latencies.minimum, latencies.maximum, (latencies.sum * 1.0) / ITERATIONS, (latencies.sum * 0.000001)
          );
   return latencies;
+}
+
+template < typename Function >
+void runBenchmark(Function&& f, int thread_count, char const * msg)
+{
+  printf("\nThread count: %d\n", thread_count);
+  std::vector < std::thread > threads;
+  for (int i = 0; i < thread_count; ++i)
+  {
+    threads.emplace_back(runLogBenchmark<Function>, std::ref(f), msg);
+  }
+  for (int i = 0; i < thread_count; ++i)
+  {
+    threads[i].join();
+  }
 }
 
 void main()
 {
   logger::registry().registerHandle(std::make_unique< logger::details::MultithreadRegistryHandle >());
 
-  auto logger = std::make_shared< logger::Logger >("");
-  logger->sink = logger::registry()->getSinkFactory()->createFileSink("benchmark.log", logger::StandardFormatter());
-  //logger::registry()->registerLogger(logger);
-
-  logger->filteringLevel = logger::Level::DEBUG;
-
   
+  auto fileSink = logger::registry()->getSinkFactory()->createFileSink("benchmark.log", logger::StandardFormatter());
 
-
-  auto benchmark = [&logger](int i, const char* msg)
+  for (auto threads : { 1, 2, 3, 4 })
   {
-    logger->debug(logger::LOGGER_CALL_CONTEXT, [&]()->std::string
-    {
-      // will be improve
-      return "iteration #" + std::to_string(i) + std::string(", message: ") + std::string(msg);
-    }
-    );
-  };
+    auto logger = std::make_shared< logger::Logger >("logger-" + std::to_string(threads));
+    logger->sink = fileSink;
+    logger->filteringLevel = logger::Level::DEBUG;
 
-  runLogBenchmark(benchmark, "simple");
+    auto benchmark = [&logger](int i, const char* msg)
+    {
+      logger->debug(logger::LOGGER_CALL_CONTEXT, [&]()->std::string
+      {
+        // will be improved
+        return "iteration #" + std::to_string(i) + std::string(", message: ") + std::string(msg);
+      }
+      );
+    };
+
+
+    runBenchmark(benchmark, threads, "simple");
+  }
+
+  //printf("waiting for to write all messages to out file...\n");
+  //logger->flush();
+  //printf("done\n");
 
   logger::registry().unregisterHandle();
 }
