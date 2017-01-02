@@ -45,4 +45,4 @@ if (UseExternalConcurrentQueue)
 endif (UseExternalConcurrentQueue)
 
 add_subdirectory (src/examples)
-#add_subdirectory (src/benchmark)
+add_subdirectory (src/benchmark)
