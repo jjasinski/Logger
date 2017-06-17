@@ -33,7 +33,8 @@
 
 const auto THOUSAND = 1000;
 const auto MILLION = THOUSAND * THOUSAND;
-const auto ITERATIONS = 250 * THOUSAND;// MILLION;
+//const auto ITERATIONS = 250 * THOUSAND;// MILLION;
+const auto ITERATIONS = MILLION;
 
 /* Returns microseconds since epoch */
 uint64_t timestamp_now()
@@ -43,16 +44,9 @@ uint64_t timestamp_now()
 
 struct Latencies
 {
-  Latencies()
-  {
-    minimum = std::numeric_limits<uint64_t>::max();
-    maximum = std::numeric_limits<uint64_t>::min();
-    sum = 0;
-  }
-
-  uint64_t minimum;
-  uint64_t maximum;
-  uint64_t sum;
+  uint64_t minimum = std::numeric_limits<uint64_t>::max();
+  uint64_t maximum = std::numeric_limits<uint64_t>::min();
+  uint64_t sum = 0;
 };
 
 template < typename Function >
@@ -103,7 +97,7 @@ void main()
   
   auto fileSink = logger::registry()->getSinkFactory()->createFileSink("benchmark.log", logger::StandardFormatter());
 
-  for (auto threads : { 1, 2, 3, 4 })
+  for (auto threads : { 10 })
   {
     auto logger = std::make_shared< logger::Logger >("logger-" + std::to_string(threads));
     logger->sink = fileSink;
@@ -114,7 +108,7 @@ void main()
       logger->debug(logger::LOGGER_CALL_CONTEXT, [&]()->std::string
       {
         // will be improved
-        return "iteration #" + std::to_string(i) + std::string(", message: ") + std::string(msg);
+        return "iteration #" + std::to_string(i);// +std::string(", message: ") + std::string(msg);
       }
       );
     };

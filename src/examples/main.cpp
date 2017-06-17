@@ -68,11 +68,13 @@ void main()
   Formatter formatter =
     [](const Message& message)
   {
+    //auto logContext = message.loggerContext.lock();
     //static long long prev
     auto ns = message.time.time_since_epoch().count();
     return string_format("%lld [%s] {%s, %s:%i} %s\n",
       ns / 1000, // nanosec to microsec
-      message.loggerContext->name.c_str(),
+      message.loggerContext.lock()->name.c_str(),
+      //message.loggerName.c_str(),
       toString(message.threadId).c_str(),
       message.callContext.function,
       message.callContext.line,
